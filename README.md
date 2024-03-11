@@ -1,0 +1,1 @@
+# nse_stocks_pattern
