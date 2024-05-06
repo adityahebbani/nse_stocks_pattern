@@ -1,8 +1,10 @@
+# Calculates and graphs predicted closing prices
+
 import pandas as pd
 import numpy as np
 import yfinance as yf
 import pandas_ta as ta
-from datetime import date,datetime, timedelta
+from datetime import date, datetime, timedelta
 import matplotlib.pyplot as plt
 
 companies = ['HDFCBANK.NS']
