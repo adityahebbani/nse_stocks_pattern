@@ -1,42 +1,30 @@
-# Analyzes the ticker data
-import csv
-import pytz
 import yfinance as yf
-from yahooquery import search
-import numpy as np
 import pandas as pd
-from datetime import datetime, timedelta
+import numpy as np
 import matplotlib.pyplot as plt
+from datetime import datetime, timedelta
+import pytz
 from scipy.optimize import curve_fit
 from sklearn.metrics import r2_score
-from scipy.optimize import minimize
 
-# Get data for each company from yf
 def fetch_data(tickers, start_date, end_date):
     all_data = {}
     for ticker in tickers:
         data = yf.download(ticker, start=start_date, end=end_date)
-        if data is not None:
+        if not data.empty:
             all_data[ticker] = data['Close']
     return all_data
 
 def get_past_six_months_dates():
     tz = pytz.timezone("Asia/Kolkata")
-    end_date = tz.localize(datetime.today())
-    start_date = end_date - timedelta(days=180)
+    end_date = tz.localize(datetime.now())
+    start_date = end_date - timedelta(days=720)
     return start_date, end_date
 
 def sine_function(x, A, B, C, D):
     return A * np.sin(B * x + C) + D
 
-def regularized_cost_function(params, x_data, y_data, lambda_reg):
-    A, B, C, D = params
-    predictions = sine_function(x_data, A, B, C, D)
-    residuals = y_data - predictions
-    regularization = lambda_reg * (A**2 + B**2 + C**2 + D**2)
-    return np.sum(residuals**2) + regularization
-
-def fit_sine_curve_with_regularization(dates, prices, lambda_reg=1.0):
+def fit_sine_curve(dates, prices):
     # Convert dates to numerical values
     x_data = np.array((dates - dates.min()).days)
     y_data = prices.values
@@ -47,25 +35,29 @@ def fit_sine_curve_with_regularization(dates, prices, lambda_reg=1.0):
 
     # Initial guess for the parameters
     guess_freq = 2 * np.pi  # Adjust initial guess for the frequency
-    initial_guess = [1, guess_freq, 0, 0]
+    guess = [1, guess_freq, 0, 0]
 
-    # Minimize the regularized cost function
-    result = minimize(regularized_cost_function, initial_guess, args=(x_data_scaled, y_data_scaled, lambda_reg), method='L-BFGS-B')
+    try:
+        # Fit the sine curve with increased maxfev
+        params, _ = curve_fit(sine_function, x_data_scaled, y_data_scaled, p0=guess, maxfev=10000)
 
-    if result.success:
-        params = result.x
+        # Rescale the parameters
         params[0] *= np.std(y_data)
         params[3] = np.mean(y_data)
         params[1] /= np.max(x_data)
-
+        
         # Calculate fitted values
         fitted_values = sine_function(x_data, *params)
 
         # Calculate R-squared value
         r_squared = r2_score(y_data, fitted_values)
+
         return params, r_squared
-    else:
-        print(f"Error fitting sine curve: {result.message}")
+    except RuntimeError as e:
+        print(f"Error fitting sine curve for data: {e}")
+        return None, None
+    except Exception as e:
+        print(f"Unexpected error: {e}")
         return None, None
 
 def graph_data(ticker, close_prices, params, r_squared):
@@ -87,25 +79,22 @@ def graph_data(ticker, close_prices, params, r_squared):
     plt.tight_layout()
     plt.show()
 
-
 def main():
-    # Get the data - read tickers from new csv file
-    tickers = ['AAPL', 'GOOGL', 'MSFT', 'AMZN'] # For testing
-    # start_date = '2023-01-01' # Start and end should use get_past_six_months_dates()
-    # end_date = '2023-01-31'
+    # Example tickers
+    tickers = ['AAPL', 'GOOGL', 'MSFT', 'AMZN']
+
+    # Get the date range for the past six months
     start_date, end_date = get_past_six_months_dates()
+
+    # Fetch the data for the specified tickers
     all_data = fetch_data(tickers, start_date, end_date)
 
-    # Graph the data and fit sine curve (for testing)
+    # Graph the data for each ticker
     for stock_name, stock_data in all_data.items():
+        # Drop NaN values and sort the data
         stock_data = stock_data.dropna().sort_index()
-        params, r_squared = fit_sine_curve_with_regularization(stock_data.index, stock_data)
+        params, r_squared = fit_sine_curve(stock_data.index, stock_data)
         graph_data(stock_name, stock_data, params, r_squared)
-    
-    # Use fitment measure (probably r-square value) to see if ticker qualifies
-    
-    # return a list of tickers that qualify
-
 
 if __name__ == "__main__":
     main()
